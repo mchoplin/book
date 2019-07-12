@@ -1,9 +1,15 @@
-[[appendix_abstractions]]
-[appendix]
-== Coupling and Abstractions ==
+[preface]
+[[chapter_02B_abstractions]]
+== A Brief Interlude: On Coupling and Abstractions
 
-NOTE: chapter under construction.  need to find a place for it in the flow of
-    the book.  maybe after chapter 2?
+// this chapter is marked as a preface as a hack to disable
+// chapter numbering for it in atlas/pdf.  when we go to prod
+// we should find a better solution.
+
+Allow us a brief digression on the subject of abstractions, dear reader.
+We've talked about _abstractions_ quite a lot.  The repository is an
+abstraction over permanent storage for example.  But what makes a good
+abstraction?  What do we want from them?
 
 A key theme in this book, hidden among the fancy patterns, is that we can use
 simple abstractions to hide messy details. When we're writing code for fun, or
@@ -22,46 +28,21 @@ all. This is the problem with the ball of mud pattern: as the application grows,
 the coupling increases superlinearly until we are no longer able to effectively
 change our systems.
 
-We can reduce the degree of coupling within a system by abstracting away the
-details.
+We can reduce the degree of coupling within a system
+(<<coupling_illustration1>>) by abstracting away the details
+(<<coupling_illustration2>>):
 
 
 [[coupling_illustration1]]
 .Lots of coupling
-====
-[source,text]
-[role="skip"]
-----
-+--------+     +--------+
-|        |<--->|        |
-|        |<--->|        |
-| System |<--->| System |
-|   A    |<--->|   B    |
-|        |<--->|        |
-|        |<--->|        |
-+--------+     +--------+
-----
-====
+image::images/coupling_illustration1.png[]
 
 [[coupling_illustration2]]
 .Less coupling
-====
-[source,text]
-[role="skip"]
-----
-+--------+     +--------+     +--------+
-|        |<--->|        |     |        |
-|        |<--->|        |     |        |
-| System |<--->|  Abs-  |     | System |
-|   A    |<--->|traction|<--->|   B    |
-|        |<--->|        |     |        |
-|        |<--->|        |     |        |
-+--------+     +--------+     +--------+
-----
-====
+image::images/coupling_illustration2.png[]
 
 
-In both diagrams above, we have a pair of subsystems, with the one dependent on
+In both diagrams, we have a pair of subsystems, with the one dependent on
 the other. In the first diagram, there is a high degree of coupling between the
 two because of reasons. If we need to change system B, there's a good
 chance that the change will ripple through to system A.
@@ -213,7 +194,7 @@ def test_when_a_file_has_been_renamed_in_the_source():
 ====
 
 Wowsers, that's a lot of setup for two very simple cases! The problem is that
-our domain logic, "figure out the difference between two directories", is tightly
+our domain logic, "figure out the difference between two directories," is tightly
 coupled to the IO code. We can't run our difference algorithm without calling
 the pathlib, shutil, and hashlib modules.
 
@@ -244,7 +225,7 @@ What could we do to abstract out the filesystem in each case?
 For (1) and (2), we've already intuitively started using an abstraction, a
 dictionary of hashes to paths, and you may already have been thinking, "why not
 use build up a dictionary for the destination folder as well as the source,
-then we just compare two dicts".  That seems like a very nice way to abstract
+then we just compare two dicts?"  That seems like a very nice way to abstract
 the current state of the filesystem.
 
     source_files = {'hash1': 'path1', 'hash2': 'path2'}
@@ -306,7 +287,7 @@ Let's see them in turn.
 
 ==== Option 1 - Functional Core, Imperative Shell. Ish.
 
-Let's call this the "Harry Way".  FCIS is probably a bit of an aspirational
+Let's call this the "Harry Way."  FCIS is probably a bit of an aspirational
 name, in fact the point is not to have a pure-functional solution in the 
 sense of not-using-classes, but more in the sense of having no (or minimal)
 side-effects.  The aim is to split out a core of business logic with minimal or
@@ -359,7 +340,7 @@ def determine_actions(src_hashes, dst_hashes, src_folder, dst_folder):  #<2>
 <1> The code to build up the dictionary of paths and hashes is now trivially
     easy to write.
 
-<2> The core of our "business logic", which says, given these two sets of
+<2> The core of our "business logic," which says, given these two sets of
     hashes and filenames, what should we copy/move/delete?  takes simple
     data structures and returns simple data structures
 
@@ -394,9 +375,9 @@ Our tests now act directly on the `determine_actions()` function:
 Because we've disentangled the logic of our program - the code for identifying
 changes - from the low-level details of IO, we can easily test the core of our code.
 
-==== Dependency Injection
+==== Option 2: Dependency Injection
 
-Let's call this the "Bob way", and it's about making dependencies explicit and
+Let's call this the "Bob way," and it's about making dependencies explicit and
 modifiable:
 
 [[di_version]]
@@ -426,11 +407,17 @@ def synchronise_dirs(reader, apply_func, source_root, dest_root):  #<1>
 ----
 ====
 
-//TODO: test this listing
+//NICE-TO-HAVE: test this listing
 
 <1> Our top-level function now exposes two new dependencies, a `reader` and an `apply_func`
 <2> We invoke the `reader` to produce our dict-abstraction of the filesystems
 <3> And we invoke the `apply_func` using our action-abstraction for the actions we want to apply.
+
+TIP: Notice that, although we're using dependency injection, there was no need
+    to define an abstract base class or any kind of explicit interface.  In the
+    book we often show ABCs because we hope they help to understand what the
+    abstraction is, but they're not necessary.  Python's dynamic nature means
+    we can always rely on duck typing.
 
 
 [[bob_tests]]
@@ -466,11 +453,23 @@ The advantage of this approach is that your tests act on the exact same function
 that's used by your production code.  The disadvantage is that DI usually demands
 a bit more work on the part of the reader to understand what's going on.
 
-TODO: discuss the fact that our implementation is full of bugs and now we
-    can easily test for them.
+In either case, we can now work on fixing all the bugs in our implementation;
+enumerating tests for all the edge cases is now much easier.
 
 
-=== Wrap-up: "Depend on Abstractions".
+.So which do we use in this book? FCIS or DI?
+******************************************************************************
+Both. Our domain model is entirely free of dependencies and side-effects,
+so that's our functional core.  The service layer that we build around it
+(in <<chapter_03_service_layer>>) is its imperative shell, but we actually
+use dependency injection to provide that imperative shell with things like
+access to the database, so we can still unit test it.
+
+See <<chapter_10_dependency_injection>> for more exploration of making our
+dependency injection more explict and centralised.
+******************************************************************************
+
+=== Wrap-up: "Depend on Abstractions."
 
 We'll see this idea come up again and again in the book: we can make our
 systems easier to test and maintain by simplifying the interface between our
@@ -480,12 +479,11 @@ a few heuristics and questions to ask yourself:
 
 * Can I choose a familiar Python datastructure to represent the state of the
   messy system, and try to imagine a single function that can return that
-  state.
+  state?
 * Where can I draw a line between my systems, where can I carve out a seam, to
   stick that abstraction in?
-* What are the dependencies and what is the core business logic anyway?
+* What are the dependencies and what is the core "business" logic?
 
 Practice makes less-imperfect!
 
-//TODO: let's work on this wrap-up.
-
+And now back to our regular programming...

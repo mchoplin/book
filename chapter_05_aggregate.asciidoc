@@ -1,5 +1,5 @@
 [[chapter_05_aggregate]]
-== Aggregates and consistency boundaries
+== Aggregates And Consistency Boundaries
 
 What's the point of a domain model anyway? What's the fundamental problem
 we're trying to addresss?
@@ -54,7 +54,7 @@ don't break the invariants.
 If we're unable to meet our invariants, we might choose to raise an error rather
 than complete the operation.
 
-=== Invariants and Concurrency
+=== Invariants And Concurrency
 
 In a single threaded single user application it's easy for us to maintain the
 invariants of our system. We can just allocate stock, one line at a time, and
@@ -76,7 +76,7 @@ order lines, we can't hold a lock over the whole `batches` table for
 every single one.
 
 
-=== Choosing the right Aggregate
+=== Choosing The Right Aggregate
 
 [quote, Eric Evans, DDD blue book]
 ____
@@ -94,9 +94,9 @@ purpose of data changes.
 ____
 
 Even if it weren't for the data integrity concerns, as a model gets more complex
-and grows more different _Entity_ and _Value Objects_, all of which start pointing
+and grows more different Entity and Value Objects, all of which start pointing
 to each other, it can be hard to keep track of who can modify what.  Especially
-when we have _Collections_ in the model like we do (our batches are a collection),
+when we have _collections_ in the model like we do (our batches are a collection),
 it's a good idea to nominate some entities to be the single entrypoint for
 modifying their related objects.  It makes the system conceptually simpler
 and easy to reason about if you nominate some objects to be in charge of consistency
@@ -147,6 +147,40 @@ class Product:
 //      might have a __hash__ so that we can put it into a set, but because you
 //      are never supposed to have a collection of aggregates, they could return
 //      an error for __has__. or sumfink.
+
+
+.Aggregates, Bounded Contexts and Microservices
+*******************************************************************************
+One of the most important contributions from Evans and the DDD community
+is the concept of
+https://martinfowler.com/bliki/BoundedContext.html[_Bounded Contexts_].
+
+In essence, this was a reaction against attempts to capture entire businesses
+into a single model. The word "customer" means different things to people
+in sales, customer services, logistics, support, and so on.  Attributes
+needed in one context are irrelevant in another; more perniciously, concepts
+with the same name can have entirely different meanings in different contexts.
+Rather than trying to build a single model (or class, or database) to capture
+all the use cases, better to have several different models, draw boundaries
+around each context, and handle the translation between different contexts
+explicitly.
+
+This concept translates very well to the world of microservices, where each
+microservice is free to have its own concept of "customer", and rules for
+translating that to and from other microservices it integrates with.
+
+Whether or not you've got a microservices architecture, a key consideration
+in choosing your aggregates is also choosing the bounded context that they
+will operate in.  By restricting the context, you can keep your number of
+aggregates low and their size manageable.
+
+Once again we find ourselves forced to say that we can't give this issue
+the treatment it deserves here, and we can only encourage you to read up on it
+elsewhere.
+
+//TODO more links or suggestions on where to read about bounded context?
+
+*******************************************************************************
 
 
 === 1 Aggregate = 1 Repository
@@ -210,16 +244,40 @@ def allocate(
         product = uow.products.get(sku=line.sku)
         if product is None:
             raise InvalidSku(f'Invalid sku {line.sku}')
-        batch = product.allocate(line)
+        batchref = product.allocate(line)
         uow.commit()
-    return batch
+    return batchref
 ----
 ====
 
 TODO: discuss, should repository raise `InvalidSku`?
 
 
-=== Version numbers
+.Exercise for the Reader
+******************************************************************************
+You've just seen the main top layers of the code, so this shouldn't be too hard,
+but we'd like you to implement the `Product` aggregate starting from `Batch`,
+just like we did.
+
+Of course you could cheat and copy/paste from the listings above, but even
+if you do that, you'll still have to solve a few challenges on your own,
+like adding the model to the ORM and making sure all the moving parts can
+talk to each other, which we hope will be instructive.
+
+https://github.com/python-leap/code/tree/chapter_05_aggregate_exercise
+
+We've put in a "cheating" implementation in that delegates to the existing
+`allocate()` function, so you should be able to evolve that towards the real
+thing.
+
+We've marked a couple of tests with `@pytest.skip()`, come back to then
+when you're done and you've read the rest of this chapter, to have a go
+at implementing version numbers.  Bonus points if you can get SQLAlchemy to
+do them for you by magic!
+
+******************************************************************************
+
+=== Version Numbers
 
 We've got our new aggregate and we're using it in all the right places, the remaining
 question is:  how will we actually enforce our data integrity rules?  We don't want
@@ -291,13 +349,33 @@ TODO: more discussion of version number -- actual numebr doesn't matter,
     we're just setting _something_ so the db complains, could use uids,
     also discuss similarity with eventsourcing version numbers.
 
-=== Testing for our data integrity rules
+=== Testing For Our Data Integrity Rules
 
 Now to actually make sure we can get the behaviour we want: if we have two
 concurrent attempts to do allocation against the same `Product`, one of them
 should fail, because they can't both update the version number:
 
+////
+TODO:
+In Example 5. An integration test for concurrency behaviour (tests/integration/test_uow.py)
+it might be helpful to use order1 and order2 instead of o1 and o2.
 
+This might have been morning-brain, but I had to read the code over a few times to figure out why product version was 4 instead of 1 or 2.
+Perhaps instead something like:
+
+product_version = 3
+insert_batch(session, batch, sku, 100, eta=None, product_version=product_version)
+...
+assert version == 4
+...
+
+Or if you're ok leaving the constant behind:
+
+...
+assert version == product_version +1
+...
+https://github.com/python-leap/book/issues/36
+////
 [[data_integrity_test]]
 .An integration test for concurrency behaviour (tests/integration/test_uow.py)
 ====
@@ -370,7 +448,7 @@ def try_to_allocate(orderid, sku, exceptions):
 ====
 
 
-==== Enforcing concurrency rules by using database transaction isolation levels
+==== Enforcing Concurrency Rules By Using Database Transaction Isolation Levels
 
 To get the test to pass as it is, we can set the transaction isolation level
 on our session:
@@ -392,7 +470,7 @@ understanding https://www.postgresql.org/docs/9.6/transaction-iso.html[the
 documentation].
 
 
-==== SELECT FOR UPDATE can also help
+==== SELECT FOR UPDATE Can Also Help
 
 An alternative to using the `SERIALIZABLE` isolation level is to use
 https://www.postgresql.org/docs/9.6/explicit-locking.html[SELECT FOR UPDATE],
